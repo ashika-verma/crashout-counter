@@ -9,10 +9,13 @@
    ─────────────────────────────────────────────────────────── */
 
 const LS_KEY    = "crashout.data.v1";
-const LS_FIRST  = "crashout.firstSeen";
 const LS_SECRET = "crashout.secret";
 const GIST_FILE = "crashouts.json";
 const DAY = 86_400_000;
+
+/* global "counter start" — used only when nobody has ever crashed out yet, so
+   every device counts from the same moment instead of its own first visit */
+const GENESIS = Date.parse("2026-07-19T01:14:58Z");
 
 /* the gist everyone reads from (public read, timestamps only) */
 const READ_GIST = "0b17c23d12d2437e749005f2614e74bf";
@@ -32,9 +35,6 @@ function cache() { localStorage.setItem(LS_KEY, JSON.stringify(crashouts)); }
 function setLedger(list) {
   crashouts = [...new Set(list)].filter(Number.isFinite).sort((a, b) => a - b);
   cache();
-}
-function mergeTimestamps(a, b) {
-  return [...new Set([...a, ...b])].filter(Number.isFinite).sort((x, y) => x - y);
 }
 
 /* ---------- elements ---------- */
@@ -74,16 +74,10 @@ function humanDuration(ms) {
   return `${b.secs}s`;
 }
 
-/* the moment this browser first opened the app, so the clock ticks from day one */
-function firstSeen() {
-  let t = Number(localStorage.getItem(LS_FIRST));
-  if (!Number.isFinite(t) || !t) { t = Date.now(); localStorage.setItem(LS_FIRST, String(t)); }
-  return t;
-}
-
 /* ---------- derived stats ---------- */
 function lastCrashout() { return crashouts.length ? crashouts[crashouts.length - 1] : null; }
-function streakStart() { return lastCrashout() ?? firstSeen(); }
+/* count from the last global crashout, or from GENESIS if nobody has yet — same on every device */
+function streakStart() { return lastCrashout() ?? GENESIS; }
 
 function avgInterval() {
   if (crashouts.length < 2) return DAY;
@@ -215,7 +209,8 @@ async function pull() {
   const gist = await res.json();
   const file = gist.files?.[GIST_FILE];
   if (!file) return;
-  setLedger(mergeTimestamps(crashouts, JSON.parse(file.content || "[]")));
+  // the gist is the single source of truth — mirror it exactly, don't merge local
+  setLedger(JSON.parse(file.content || "[]"));
 }
 
 /* ---------- settings modal ---------- */
