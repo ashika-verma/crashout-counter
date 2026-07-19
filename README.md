@@ -1,12 +1,15 @@
-# 🚨 Crashout Counter
+# 🐸 Crashout Counter
 
-A workplace-safety sign for your emotional stability. Press the big red button when
-you're crashing out, and the board — *"THIS FACILITY HAS OPERATED [n] DAYS SINCE THE
-LAST CRASHOUT"* — resets to zero in shame. Open the page any time and it counts up
-live, estimates how many crashouts you've *heroically resisted*, and tracks your
-longest streak.
+A sad little frog that tracks how long it's been since you last crashed out. Press the
+button (or poke the frog), it bursts into tears, and the counter resets to zero. Open
+the page any time and it counts up live, estimates how many crashouts you've *resisted*,
+and tracks your longest streak.
 
-No build step, no framework, no server. Just three static files.
+No build step, no framework, no server. Just static files + an optional GitHub Gist.
+
+**Live:**
+- https://ashika-verma.github.io/crashout-counter/
+- https://crashout.ashikaverma.com/ *(once the DNS record below is added)*
 
 ## Files
 
