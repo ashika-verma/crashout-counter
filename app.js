@@ -189,21 +189,21 @@ function ghGistId() { return localStorage.getItem(LS_GIST) || DEFAULT_GIST; }
 function isConnected() { return !!ghToken(); }
 
 async function ghApi(path, opts = {}) {
-  const res = await fetch("https://api.github.com" + path, {
-    ...opts,
-    headers: {
-      Authorization: "Bearer " + ghToken(),
-      Accept: "application/vnd.github+json",
-      "X-GitHub-Api-Version": "2022-11-28",
-      ...(opts.headers || {}),
-    },
-  });
+  const headers = {
+    Accept: "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28",
+    ...(opts.headers || {}),
+  };
+  // only attach the token when we have one — reads work fine unauthenticated
+  if (ghToken()) headers.Authorization = "Bearer " + ghToken();
+  const res = await fetch("https://api.github.com" + path, { ...opts, headers });
   if (!res.ok) throw new Error(`GitHub ${res.status}: ${(await res.text()).slice(0, 120)}`);
   return res.json();
 }
 
+// Reading the gist needs NO token — this is what makes the counter global:
+// every device pulls the same shared source of truth on load.
 async function pullFromGist() {
-  if (!isConnected()) return;
   const gist = await ghApi("/gists/" + ghGistId());
   const file = gist.files?.[GIST_FILE];
   if (!file) return;
@@ -300,8 +300,12 @@ els.modal.addEventListener("click", (e) => { if (e.target === els.modal) els.mod
   setInterval(tick, 1000);
   setInterval(() => { els.resisted.textContent = resistedCount(); }, 15_000);
 
-  if (isConnected()) {
-    try { await pullFromGist(); tick(); renderStats(true); }
-    catch (err) { console.warn("initial pull failed", err); }
+  // pull the shared global count on load — no token required to read
+  async function syncDown(animate) {
+    try { await pullFromGist(); tick(); renderStats(animate); }
+    catch (err) { console.warn("gist pull failed", err); }
   }
+  await syncDown(true);
+  // stay in step with crashouts logged from your other devices
+  setInterval(() => syncDown(false), 120_000);
 })();
