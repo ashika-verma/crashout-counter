@@ -43,30 +43,25 @@
 
   <dialog class="modal" id="syncModal">
     <form method="dialog" class="modal__inner">
-      <h2 class="modal__title">☁ global sync</h2>
+      <h2 class="modal__title">🔒 unlock logging</h2>
       <p class="modal__blurb">
-        This counter is <strong>global</strong> — every device shows the same live count
-        automatically, no token needed just to look. You only need a token on the
-        device(s) where you <strong>log</strong> a crashout. Paste it once here; it's
-        stored only in this browser and sent only to GitHub.
+        This counter is <strong>global</strong> — every device shows the same live count,
+        no setup needed just to look. To <strong>log</strong> a crashout from this device,
+        enter your secret word once. It's saved in this browser, so you'll never type it
+        again here.
       </p>
 
       <label class="field">
-        <span class="field__label">GitHub token</span>
-        <input class="field__input" id="ghToken" type="password" autocomplete="off" placeholder="gho_… or github_pat_…" />
-      </label>
-
-      <label class="field">
-        <span class="field__label">Gist ID <span class="field__hint">(pre-filled for you)</span></span>
-        <input class="field__input" id="ghGist" type="text" autocomplete="off" placeholder="gist id" />
+        <span class="field__label">secret word</span>
+        <input class="field__input" id="secretInput" type="password" autocomplete="off" placeholder="your secret word" />
       </label>
 
       <p class="modal__status" id="syncStatus"></p>
 
       <div class="modal__actions">
         <button class="modal__btn" value="cancel" type="submit">close</button>
-        <button class="modal__btn modal__btn--danger" id="ghDisconnect" value="disconnect" type="button" hidden>disconnect</button>
-        <button class="modal__btn modal__btn--go" id="ghConnect" value="connect" type="button">connect</button>
+        <button class="modal__btn modal__btn--danger" id="forgetBtn" value="forget" type="button" hidden>forget</button>
+        <button class="modal__btn modal__btn--go" id="saveSecretBtn" value="save" type="button">save</button>
       </div>
     </form>
   </dialog>

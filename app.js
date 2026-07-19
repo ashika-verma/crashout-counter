@@ -1,31 +1,37 @@
 /* ───────────────────────────────────────────────────────────
-   crashout counter
-   Data saves in localStorage by default; optionally syncs to a
-   private GitHub Gist so it can follow you across devices.
+   crashout counter — global edition
+
+   READ  : anyone, any device, reads the shared gist directly.
+           No token, no secret — the count is the same everywhere.
+   WRITE : pressing the button POSTs to a tiny serverless function
+           that holds the GitHub token as a hidden env var. You
+           authorize with a secret word, saved once in this browser.
    ─────────────────────────────────────────────────────────── */
 
-const LS_KEY   = "crashout.data.v1";
-const LS_FIRST = "crashout.firstSeen";
-const LS_TOKEN = "crashout.gh.token";
-const LS_GIST  = "crashout.gh.gist";
+const LS_KEY    = "crashout.data.v1";
+const LS_FIRST  = "crashout.firstSeen";
+const LS_SECRET = "crashout.secret";
 const GIST_FILE = "crashouts.json";
 const DAY = 86_400_000;
 
-/* pre-provisioned gist (just needs a token to write to it) */
-const DEFAULT_GIST = "0b17c23d12d2437e749005f2614e74bf";
+/* the gist everyone reads from (public read, timestamps only) */
+const READ_GIST = "0b17c23d12d2437e749005f2614e74bf";
+/* the protected write endpoint (secret + token live server-side) */
+const WRITE_ENDPOINT = "https://crashout-counter-api-anonymousrulzz-1818s-projects.vercel.app/api/crashout";
 
 let crashouts = load();
 
-/* ---------- persistence ---------- */
+/* ---------- persistence (local cache of the global ledger) ---------- */
 function load() {
   try {
     const raw = JSON.parse(localStorage.getItem(LS_KEY) || "[]");
     return Array.isArray(raw) ? raw.filter(Number.isFinite).sort((a, b) => a - b) : [];
   } catch { return []; }
 }
-function save() {
-  localStorage.setItem(LS_KEY, JSON.stringify(crashouts));
-  pushToGist();
+function cache() { localStorage.setItem(LS_KEY, JSON.stringify(crashouts)); }
+function setLedger(list) {
+  crashouts = [...new Set(list)].filter(Number.isFinite).sort((a, b) => a - b);
+  cache();
 }
 function mergeTimestamps(a, b) {
   return [...new Set([...a, ...b])].filter(Number.isFinite).sort((x, y) => x - y);
@@ -44,10 +50,9 @@ const els = {
   fx: $("fxLayer"),
   syncBtn: $("syncBtn"),
   modal: $("syncModal"),
-  ghToken: $("ghToken"),
-  ghGist: $("ghGist"),
-  ghConnect: $("ghConnect"),
-  ghDisconnect: $("ghDisconnect"),
+  secretInput: $("secretInput"),
+  saveSecretBtn: $("saveSecretBtn"),
+  forgetBtn: $("forgetBtn"),
   syncStatus: $("syncStatus"),
 };
 
@@ -69,7 +74,7 @@ function humanDuration(ms) {
   return `${b.secs}s`;
 }
 
-/* first time this browser opened the app — so the clock ticks from day one */
+/* the moment this browser first opened the app, so the clock ticks from day one */
 function firstSeen() {
   let t = Number(localStorage.getItem(LS_FIRST));
   if (!Number.isFinite(t) || !t) { t = Date.now(); localStorage.setItem(LS_FIRST, String(t)); }
@@ -78,8 +83,6 @@ function firstSeen() {
 
 /* ---------- derived stats ---------- */
 function lastCrashout() { return crashouts.length ? crashouts[crashouts.length - 1] : null; }
-
-/* the moment the current streak started counting from */
 function streakStart() { return lastCrashout() ?? firstSeen(); }
 
 function avgInterval() {
@@ -107,21 +110,17 @@ function tick() {
   els.h.textContent = b.hrs;
   els.m.textContent = b.mins;
   els.s.textContent = b.secs;
-  // keep "best streak" honest — the current run may already be the record
   if (crashouts.length) els.record.textContent = humanDuration(longestStreakMs());
 }
-
 function renderStats(animateResisted = false) {
   const total = crashouts.length;
   els.total.textContent = total;
   els.record.textContent = total ? humanDuration(longestStreakMs()) : "—";
-  els.undo.hidden = total === 0;
-
+  els.undo.hidden = total === 0 || !hasSecret();
   const target = resistedCount();
   if (animateResisted && target > 0) countUp(els.resisted, target);
   else els.resisted.textContent = target;
 }
-
 function countUp(node, target) {
   node.classList.add("counting");
   const dur = 1200, start = performance.now();
@@ -134,13 +133,8 @@ function countUp(node, target) {
   requestAnimationFrame(step);
 }
 
-/* ---------- the crashout event ---------- */
-function crashout() {
-  crashouts.push(Date.now());
-  save();
-  tick();
-  renderStats(false);
-
+/* ---------- the crashout animation ---------- */
+function playCry() {
   document.body.classList.remove("crying");
   void document.body.offsetWidth;
   document.body.classList.add("crying");
@@ -150,20 +144,14 @@ function crashout() {
   els.frog.classList.add("sob");
   setTimeout(() => els.frog.classList.remove("sob"), 1100);
 
-  cry();
-}
-
-function cry() {
   const rect = els.frog.getBoundingClientRect();
   const eyeY = rect.top + rect.height * 0.42;
   const leftEye = rect.left + rect.width * 0.4;
   const rightEye = rect.left + rect.width * 0.62;
-
   for (let i = 0; i < 16; i++) {
     const drop = document.createElement("span");
     drop.className = "tear";
-    const eye = i % 2 ? leftEye : rightEye;
-    drop.style.left = eye + (Math.random() * 16 - 8) + "px";
+    drop.style.left = (i % 2 ? leftEye : rightEye) + (Math.random() * 16 - 8) + "px";
     drop.style.top = eyeY + "px";
     drop.style.setProperty("--dur", 0.9 + Math.random() * 0.6 + "s");
     drop.style.animationDelay = Math.random() * 0.5 + "s";
@@ -183,129 +171,105 @@ function cry() {
   });
 }
 
-/* ---------- GitHub Gist sync (optional) ---------- */
-function ghToken() { return localStorage.getItem(LS_TOKEN) || ""; }
-function ghGistId() { return localStorage.getItem(LS_GIST) || DEFAULT_GIST; }
-function isConnected() { return !!ghToken(); }
+/* ---------- writing (through the protected endpoint) ---------- */
+function secret() { return localStorage.getItem(LS_SECRET) || ""; }
+function hasSecret() { return !!secret(); }
 
-async function ghApi(path, opts = {}) {
-  const headers = {
-    Accept: "application/vnd.github+json",
-    "X-GitHub-Api-Version": "2022-11-28",
-    ...(opts.headers || {}),
-  };
-  // only attach the token when we have one — reads work fine unauthenticated
-  if (ghToken()) headers.Authorization = "Bearer " + ghToken();
-  const res = await fetch("https://api.github.com" + path, { ...opts, headers });
-  if (!res.ok) throw new Error(`GitHub ${res.status}: ${(await res.text()).slice(0, 120)}`);
-  return res.json();
+async function write(action) {
+  const res = await fetch(WRITE_ENDPOINT, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ action, secret: secret(), at: Date.now() }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `error ${res.status}`);
+  if (Array.isArray(data.crashouts)) setLedger(data.crashouts);
+  return data;
 }
 
-// Reading the gist needs NO token — this is what makes the counter global:
-// every device pulls the same shared source of truth on load.
-async function pullFromGist() {
-  const gist = await ghApi("/gists/" + ghGistId());
+async function crashout() {
+  if (!hasSecret()) { openSync("enter your secret word to start logging."); return; }
+  playCry();                                   // optimistic — feels instant
+  try {
+    await write("log");
+  } catch (err) {
+    if (String(err.message).includes("secret")) openSync("that secret word didn't work. try again.");
+    else console.warn("log failed", err);
+  }
+  tick();
+  renderStats(false);
+}
+
+async function undo() {
+  if (!crashouts.length || !hasSecret()) return;
+  try { await write("undo"); tick(); renderStats(false); }
+  catch (err) { console.warn("undo failed", err); }
+}
+
+/* ---------- reading (global, no auth) ---------- */
+async function pull() {
+  const res = await fetch("https://api.github.com/gists/" + READ_GIST, {
+    headers: { Accept: "application/vnd.github+json" },
+  });
+  if (!res.ok) throw new Error("read " + res.status);
+  const gist = await res.json();
   const file = gist.files?.[GIST_FILE];
   if (!file) return;
-  crashouts = mergeTimestamps(crashouts, JSON.parse(file.content || "[]"));
-  localStorage.setItem(LS_KEY, JSON.stringify(crashouts));
+  setLedger(mergeTimestamps(crashouts, JSON.parse(file.content || "[]")));
 }
 
-let pushTimer = null;
-function pushToGist() {
-  if (!isConnected()) return;
-  clearTimeout(pushTimer);
-  pushTimer = setTimeout(async () => {
-    try {
-      await ghApi("/gists/" + ghGistId(), {
-        method: "PATCH",
-        body: JSON.stringify({ files: { [GIST_FILE]: { content: JSON.stringify(crashouts) } } }),
-      });
-    } catch (err) { console.warn("gist push failed", err); }
-  }, 400);
-}
-
-async function connectGist() {
-  const token = els.ghToken.value.trim();
-  const gistId = els.ghGist.value.trim();
-  if (!token) return setStatus("paste a token first.", "err");
-
-  setStatus("connecting…");
-  localStorage.setItem(LS_TOKEN, token);
-  if (gistId) localStorage.setItem(LS_GIST, gistId);
-
-  try {
-    await pullFromGist();
-    pushToGist();
-    tick();
-    renderStats(false);
-    reflectConnection();
-    setStatus(`synced ✓ ${crashouts.length} crashouts backed up`, "ok");
-  } catch (err) {
-    localStorage.removeItem(LS_TOKEN);
-    setStatus(String(err.message || err), "err");
-    reflectConnection();
-  }
-}
-
-function disconnectGist() {
-  localStorage.removeItem(LS_TOKEN);
-  reflectConnection();
-  setStatus("disconnected. data stays in this browser.", "");
-}
-
+/* ---------- settings modal ---------- */
+function openSync(msg = "") { reflect(); setStatus(msg, msg ? "err" : ""); els.modal.showModal(); }
 function setStatus(msg, kind = "") {
   els.syncStatus.textContent = msg;
   els.syncStatus.className = "modal__status" + (kind ? " " + kind : "");
 }
-function reflectConnection() {
-  const on = isConnected();
-  els.ghToken.value = ghToken();
-  els.ghGist.value = ghGistId();
-  els.ghDisconnect.hidden = !on;
-  els.ghConnect.textContent = on ? "re-sync" : "connect";
-  els.syncBtn.textContent = on ? "synced ☁" : "sync";
+function reflect() {
+  els.secretInput.value = secret();
+  els.forgetBtn.hidden = !hasSecret();
+  els.saveSecretBtn.textContent = hasSecret() ? "update" : "save";
+  els.syncBtn.textContent = hasSecret() ? "logging on ✓" : "unlock logging";
 }
+async function saveSecret() {
+  const val = els.secretInput.value.trim();
+  if (!val) return setStatus("type your secret word first.", "err");
+  localStorage.setItem(LS_SECRET, val);
+  setStatus("checking…");
+  try {
+    const data = await write("verify");
+    reflect();
+    renderStats(false);
+    setStatus(`unlocked ✓ ${data.crashouts?.length ?? 0} crashouts on record`, "ok");
+  } catch (err) {
+    localStorage.removeItem(LS_SECRET);
+    reflect();
+    setStatus(String(err.message).includes("secret") ? "wrong secret word." : String(err.message), "err");
+  }
+}
+function forgetSecret() { localStorage.removeItem(LS_SECRET); reflect(); renderStats(false); setStatus("logging locked on this device.", ""); }
 
 /* ---------- wiring ---------- */
 els.btn.addEventListener("click", crashout);
-els.frog.addEventListener("click", crashout);   // poke the frog too
-
-els.undo.addEventListener("click", () => {
-  if (!crashouts.length) return;
-  crashouts.pop();
-  save();
-  tick();
-  renderStats(false);
-});
-
-els.syncBtn.addEventListener("click", () => { reflectConnection(); setStatus(""); els.modal.showModal(); });
-els.ghConnect.addEventListener("click", connectGist);
-els.ghDisconnect.addEventListener("click", disconnectGist);
-
-// pressing Enter in either field should connect, not silently close the modal
-[els.ghToken, els.ghGist].forEach((input) =>
-  input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") { e.preventDefault(); connectGist(); }
-  })
-);
-// click outside the card to dismiss
+els.frog.addEventListener("click", crashout);
+els.undo.addEventListener("click", undo);
+els.syncBtn.addEventListener("click", () => openSync());
+els.saveSecretBtn.addEventListener("click", saveSecret);
+els.forgetBtn.addEventListener("click", forgetSecret);
+els.secretInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); saveSecret(); } });
 els.modal.addEventListener("click", (e) => { if (e.target === els.modal) els.modal.close(); });
 
 /* ---------- boot ---------- */
 (async function boot() {
-  reflectConnection();
+  reflect();
   tick();
   renderStats(true);
   setInterval(tick, 1000);
   setInterval(() => { els.resisted.textContent = resistedCount(); }, 15_000);
 
-  // pull the shared global count on load — no token required to read
   async function syncDown(animate) {
-    try { await pullFromGist(); tick(); renderStats(animate); }
+    try { await pull(); tick(); renderStats(animate); }
     catch (err) { console.warn("gist pull failed", err); }
   }
   await syncDown(true);
-  // stay in step with crashouts logged from your other devices
-  setInterval(() => syncDown(false), 120_000);
+  setInterval(() => syncDown(false), 120_000);   // stay in step with other devices
 })();
