@@ -183,6 +183,16 @@ body.crying { animation: wobble .5s ease-in-out; }
 .modal__btn--go { background: var(--accent); border-color: var(--accent); color: #fff; }
 .modal__btn--danger { color: var(--btn-dk); border-color: var(--btn); }
 
+/* ---------- spectator (visitor) mode ---------- */
+body[data-mode="visitor"] .btn { display: none; }
+body[data-mode="visitor"] .frog { cursor: default; }
+body[data-mode="visitor"] .eyebrow {
+  font-size: clamp(1.05rem, 4.5vw, 1.4rem);
+  font-weight: 700;
+  color: var(--accent-dk);
+  margin-top: .75rem;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::after, *::before { animation-duration: .001ms !important; animation-iteration-count: 1 !important; }
 }

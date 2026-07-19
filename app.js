@@ -17,6 +17,9 @@ const DAY = 86_400_000;
    every device counts from the same moment instead of its own first visit */
 const GENESIS = Date.parse("2026-07-19T01:14:58Z");
 
+/* whose counter this is — shown to spectators who don't have the key */
+const OWNER_NAME = "ashika";
+
 /* the gist everyone reads from (public read, timestamps only) */
 const READ_GIST = "0b17c23d12d2437e749005f2614e74bf";
 /* the protected write endpoint (secret + token live server-side) */
@@ -42,6 +45,8 @@ const $ = (id) => document.getElementById(id);
 const els = {
   d: $("d"), h: $("h"), m: $("m"), s: $("s"),
   frog: $("frog"),
+  eyebrow: $("eyebrow"),
+  subtitle: $("subtitle"),
   btn: $("crashoutBtn"),
   resisted: $("statResisted"),
   total: $("statTotal"),
@@ -223,7 +228,32 @@ function reflect() {
   els.secretInput.value = secret();
   els.forgetBtn.hidden = !hasSecret();
   els.saveSecretBtn.textContent = hasSecret() ? "update" : "save";
-  els.syncBtn.textContent = hasSecret() ? "logging on ✓" : "unlock logging";
+  applyMode();
+}
+
+/* owner (has the key) vs spectator (doesn't) — decides the whole UX */
+function isOwner() { return hasSecret(); }
+function applyMode() {
+  const owner = isOwner();
+  document.body.dataset.mode = owner ? "owner" : "visitor";
+  if (owner) {
+    els.eyebrow.textContent = "it's been";
+    els.subtitle.textContent = "since your last crashout";
+    els.syncBtn.textContent = "logging on ✓";
+  } else {
+    els.eyebrow.textContent = OWNER_NAME + "'s crashout counter";
+    els.subtitle.textContent = "since " + OWNER_NAME + " last crashed out";
+    els.syncBtn.textContent = "are you " + OWNER_NAME + "?";
+  }
+}
+
+/* poking the frog logs a crashout for the owner; for spectators it just wobbles */
+function frogPoke() {
+  if (isOwner()) { crashout(); return; }
+  els.frog.classList.remove("sob");
+  void els.frog.offsetWidth;
+  els.frog.classList.add("sob");
+  setTimeout(() => els.frog.classList.remove("sob"), 1100);
 }
 async function saveSecret() {
   const val = els.secretInput.value.trim();
@@ -245,7 +275,7 @@ function forgetSecret() { localStorage.removeItem(LS_SECRET); reflect(); renderS
 
 /* ---------- wiring ---------- */
 els.btn.addEventListener("click", crashout);
-els.frog.addEventListener("click", crashout);
+els.frog.addEventListener("click", frogPoke);
 els.undo.addEventListener("click", undo);
 els.syncBtn.addEventListener("click", () => openSync());
 els.saveSecretBtn.addEventListener("click", saveSecret);
