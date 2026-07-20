@@ -48,10 +48,13 @@ const els = {
   eyebrow: $("eyebrow"),
   subtitle: $("subtitle"),
   btn: $("crashoutBtn"),
-  resisted: $("statResisted"),
+  last: $("statLast"),
   total: $("statTotal"),
   record: $("statRecord"),
   undo: $("undoBtn"),
+  hmGrid: $("hmGrid"),
+  hmMonths: $("hmMonths"),
+  hmCaption: $("hmCaption"),
   fx: $("fxLayer"),
   syncBtn: $("syncBtn"),
   modal: $("syncModal"),
@@ -84,16 +87,6 @@ function lastCrashout() { return crashouts.length ? crashouts[crashouts.length -
 /* count from the last global crashout, or from GENESIS if nobody has yet — same on every device */
 function streakStart() { return lastCrashout() ?? GENESIS; }
 
-function avgInterval() {
-  if (crashouts.length < 2) return DAY;
-  const span = crashouts[crashouts.length - 1] - crashouts[0];
-  return Math.max(60_000, span / (crashouts.length - 1));
-}
-function resistedCount() {
-  const last = lastCrashout();
-  if (last === null) return 0;
-  return Math.max(0, Math.floor((Date.now() - last) / avgInterval()));
-}
 function longestStreakMs() {
   let best = 0;
   for (let i = 1; i < crashouts.length; i++) best = Math.max(best, crashouts[i] - crashouts[i - 1]);
@@ -111,25 +104,76 @@ function tick() {
   els.s.textContent = b.secs;
   if (crashouts.length) els.record.textContent = humanDuration(longestStreakMs());
 }
-function renderStats(animateResisted = false) {
+function renderStats() {
   const total = crashouts.length;
+  const last = lastCrashout();
   els.total.textContent = total;
   els.record.textContent = total ? humanDuration(longestStreakMs()) : "—";
+  els.last.textContent = last === null
+    ? "never"
+    : new Date(last).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
   els.undo.hidden = total === 0 || !hasSecret();
-  const target = resistedCount();
-  if (animateResisted && target > 0) countUp(els.resisted, target);
-  else els.resisted.textContent = target;
+  renderHeatmap();
 }
-function countUp(node, target) {
-  node.classList.add("counting");
-  const dur = 1200, start = performance.now();
-  function step(now) {
-    const t = Math.min(1, (now - start) / dur);
-    node.textContent = Math.round((1 - Math.pow(1 - t, 3)) * target);
-    if (t < 1) requestAnimationFrame(step);
-    else { node.textContent = target; setTimeout(() => node.classList.remove("counting"), 400); }
+
+/* ---------- contribution heatmap (GitHub-style) ---------- */
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function dayKey(d) { return d.getFullYear() + "-" + d.getMonth() + "-" + d.getDate(); }
+function level(n) { return n === 0 ? "0" : n === 1 ? "1" : n === 2 ? "2" : n === 3 ? "3" : "4"; }
+
+function renderHeatmap() {
+  // count crashouts per local calendar day
+  const counts = {};
+  for (const t of crashouts) { const k = dayKey(new Date(t)); counts[k] = (counts[k] || 0) + 1; }
+
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const start = new Date(today);
+  start.setDate(start.getDate() - 52 * 7);   // ~1 year back
+  start.setDate(start.getDate() - start.getDay());  // align to Sunday
+
+  // build weeks (columns) of 7 days (rows), future days -> null
+  const weeks = [];
+  const cur = new Date(start);
+  while (cur <= today) {
+    const week = [];
+    for (let i = 0; i < 7; i++) {
+      if (cur <= today) week.push({ date: new Date(cur), count: counts[dayKey(cur)] || 0 });
+      else week.push(null);
+      cur.setDate(cur.getDate() + 1);
+    }
+    weeks.push(week);
   }
-  requestAnimationFrame(step);
+
+  // grid cells, column-major to match grid-auto-flow: column
+  els.hmGrid.style.gridTemplateColumns = `repeat(${weeks.length}, var(--hm-cell))`;
+  els.hmGrid.innerHTML = "";
+  for (const week of weeks) {
+    for (const day of week) {
+      const c = document.createElement("span");
+      if (!day) { c.className = "hm-cell hm-cell--empty"; }
+      else {
+        c.className = "hm-cell";
+        c.dataset.level = level(day.count);
+        c.title = `${day.count} crashout${day.count === 1 ? "" : "s"} · ${day.date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`;
+      }
+      els.hmGrid.appendChild(c);
+    }
+  }
+
+  // month labels, one per column, shown when the month changes
+  els.hmMonths.style.gridTemplateColumns = `repeat(${weeks.length}, var(--hm-cell))`;
+  els.hmMonths.innerHTML = "";
+  let lastMonth = -1;
+  for (const week of weeks) {
+    const first = week.find(Boolean);
+    const s = document.createElement("span");
+    if (first && first.date.getMonth() !== lastMonth) { s.textContent = MONTHS[first.date.getMonth()]; lastMonth = first.date.getMonth(); }
+    els.hmMonths.appendChild(s);
+  }
+
+  const yearAgo = Date.now() - 365 * DAY;
+  const n = crashouts.filter((t) => t >= yearAgo).length;
+  els.hmCaption.textContent = `${n} crashout${n === 1 ? "" : "s"} in the last year`;
 }
 
 /* ---------- the crashout animation ---------- */
@@ -196,12 +240,12 @@ async function crashout() {
     else console.warn("log failed", err);
   }
   tick();
-  renderStats(false);
+  renderStats();
 }
 
 async function undo() {
   if (!crashouts.length || !hasSecret()) return;
-  try { await write("undo"); tick(); renderStats(false); }
+  try { await write("undo"); tick(); renderStats(); }
   catch (err) { console.warn("undo failed", err); }
 }
 
@@ -263,7 +307,7 @@ async function saveSecret() {
   try {
     const data = await write("verify");
     reflect();
-    renderStats(false);
+    renderStats();
     setStatus(`unlocked ✓ ${data.crashouts?.length ?? 0} crashouts on record`, "ok");
   } catch (err) {
     localStorage.removeItem(LS_SECRET);
@@ -271,7 +315,7 @@ async function saveSecret() {
     setStatus(String(err.message).includes("secret") ? "wrong secret word." : String(err.message), "err");
   }
 }
-function forgetSecret() { localStorage.removeItem(LS_SECRET); reflect(); renderStats(false); setStatus("logging locked on this device.", ""); }
+function forgetSecret() { localStorage.removeItem(LS_SECRET); reflect(); renderStats(); setStatus("logging locked on this device.", ""); }
 
 /* ---------- wiring ---------- */
 els.btn.addEventListener("click", crashout);
@@ -287,14 +331,13 @@ els.modal.addEventListener("click", (e) => { if (e.target === els.modal) els.mod
 (async function boot() {
   reflect();
   tick();
-  renderStats(true);
+  renderStats();
   setInterval(tick, 1000);
-  setInterval(() => { els.resisted.textContent = resistedCount(); }, 15_000);
 
-  async function syncDown(animate) {
-    try { await pull(); tick(); renderStats(animate); }
+  async function syncDown() {
+    try { await pull(); tick(); renderStats(); }
     catch (err) { console.warn("gist pull failed", err); }
   }
-  await syncDown(true);
-  setInterval(() => syncDown(false), 120_000);   // stay in step with other devices
+  await syncDown();
+  setInterval(syncDown, 120_000);   // stay in step with other devices
 })();
