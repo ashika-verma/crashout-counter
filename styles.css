@@ -34,12 +34,22 @@ body.crying { animation: wobble .5s ease-in-out; }
 }
 
 .card {
-  width: min(440px, 100%);
+  width: min(800px, 94vw);
   background: var(--card);
   border-radius: 32px;
-  padding: clamp(2rem, 6vw, 3rem) clamp(1.5rem, 6vw, 2.5rem) 2rem;
+  padding: clamp(2rem, 6vw, 3rem) clamp(1.25rem, 3vw, 2.25rem) 2rem;
   text-align: center;
   box-shadow: 0 24px 60px -20px rgba(79, 156, 63, .35), 0 4px 12px rgba(47,58,44,.06);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .5rem;
+}
+
+/* the frog + counter + button stay a tidy centered column even in the wide card */
+.hero {
+  width: 100%;
+  max-width: 440px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -117,9 +127,9 @@ body.crying { animation: wobble .5s ease-in-out; }
 
 /* ---------- contribution heatmap ---------- */
 .heatmap {
-  --hm-cell: 12px;
-  --hm-gap: 3px;
-  --hm-label: 30px;
+  --hm-cell: 11px;
+  --hm-gap: 2px;
+  --hm-label: 28px;
   --hm-0: #e7ece0;
   --hm-1: #c6e6b3;
   --hm-2: #97d17a;
