@@ -8,7 +8,14 @@
            authorize with a secret word, saved once in this browser.
    ─────────────────────────────────────────────────────────── */
 
-const LS_KEY    = "crashout.data.v1";
+/* guest mode: crashout.ashikaverma.com/?u=<name> gives a friend their own
+   local-only counter for the day — never touches the global gist or a secret */
+const GUEST = (new URLSearchParams(location.search).get("u") || "")
+  .toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 20);
+const isGuest = !!GUEST;
+const GUEST_NAME = isGuest ? GUEST[0].toUpperCase() + GUEST.slice(1) : "";
+
+const LS_KEY    = isGuest ? "crashout.guest." + GUEST : "crashout.data.v1";
 const LS_SECRET = "crashout.secret";
 const GIST_FILE = "crashouts.json";
 const DAY = 86_400_000;
@@ -112,7 +119,7 @@ function renderStats() {
   els.last.textContent = last === null
     ? "never"
     : new Date(last).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
-  els.undo.hidden = total === 0 || !hasSecret();
+  els.undo.hidden = total === 0 || (!isGuest && !hasSecret());
   renderHeatmap();
 }
 
@@ -231,6 +238,12 @@ async function write(action) {
 }
 
 async function crashout() {
+  if (isGuest) {                               // local-only counter, no server/secret
+    crashouts.push(Date.now());
+    setLedger(crashouts);
+    playCry(); tick(); renderStats();
+    return;
+  }
   if (!hasSecret()) { openSync("enter your secret word to start logging."); return; }
   playCry();                                   // optimistic — feels instant
   try {
@@ -244,13 +257,16 @@ async function crashout() {
 }
 
 async function undo() {
-  if (!crashouts.length || !hasSecret()) return;
+  if (!crashouts.length) return;
+  if (isGuest) { crashouts.pop(); setLedger(crashouts); tick(); renderStats(); return; }
+  if (!hasSecret()) return;
   try { await write("undo"); tick(); renderStats(); }
   catch (err) { console.warn("undo failed", err); }
 }
 
 /* ---------- reading (global, no auth) ---------- */
 async function pull() {
+  if (isGuest) return;                         // guest counter lives only in this browser
   const res = await fetch("https://api.github.com/gists/" + READ_GIST, {
     headers: { Accept: "application/vnd.github+json" },
   });
@@ -275,9 +291,16 @@ function reflect() {
   applyMode();
 }
 
-/* owner (has the key) vs spectator (doesn't) — decides the whole UX */
+/* owner (has the key) vs spectator (doesn't) vs guest (a friend's own counter) */
 function isOwner() { return hasSecret(); }
 function applyMode() {
+  if (isGuest) {
+    document.body.dataset.mode = "guest";
+    els.eyebrow.textContent = GUEST_NAME + "'s crashout counter";
+    els.subtitle.textContent = "since " + GUEST_NAME + " last crashed out";
+    els.btn.textContent = "ru " + GUEST_NAME + " 😭";
+    return;
+  }
   const owner = isOwner();
   document.body.dataset.mode = owner ? "owner" : "visitor";
   if (owner) {
@@ -291,9 +314,9 @@ function applyMode() {
   }
 }
 
-/* poking the frog logs a crashout for the owner; for spectators it just wobbles */
+/* poking the frog logs a crashout for the owner/guest; for spectators it just wobbles */
 function frogPoke() {
-  if (isOwner()) { crashout(); return; }
+  if (isOwner() || isGuest) { crashout(); return; }
   els.frog.classList.remove("sob");
   void els.frog.offsetWidth;
   els.frog.classList.add("sob");

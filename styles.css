@@ -250,6 +250,9 @@ body.crying { animation: wobble .5s ease-in-out; }
 .modal__btn--go { background: var(--accent); border-color: var(--accent); color: #fff; }
 .modal__btn--danger { color: var(--btn-dk); border-color: var(--btn); }
 
+/* ---------- guest mode (a friend's own local counter) ---------- */
+body[data-mode="guest"] #syncBtn { display: none; }
+
 /* ---------- spectator (visitor) mode ---------- */
 body[data-mode="visitor"] .btn { display: none; }
 body[data-mode="visitor"] .frog { cursor: default; }
