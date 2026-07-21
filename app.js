@@ -126,7 +126,17 @@ function renderStats() {
 /* ---------- contribution heatmap (GitHub-style) ---------- */
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 function dayKey(d) { return d.getFullYear() + "-" + d.getMonth() + "-" + d.getDate(); }
-function level(n) { return n === 0 ? "0" : n === 1 ? "1" : n === 2 ? "2" : n === 3 ? "3" : "4"; }
+function level(n) {
+  if (n <= 0) return "0";
+  if (n === 1) return "1";
+  if (n === 2) return "2";
+  if (n <= 4) return "3";
+  if (n <= 6) return "4";
+  if (n <= 9) return "5";
+  if (n <= 12) return "6";
+  if (n <= 16) return "7";
+  return "8";
+}
 
 function renderHeatmap() {
   // count crashouts per local calendar day

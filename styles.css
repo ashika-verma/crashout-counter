@@ -130,11 +130,15 @@ body.crying { animation: wobble .5s ease-in-out; }
   --hm-cell: 11px;
   --hm-gap: 2px;
   --hm-label: 28px;
-  --hm-0: #e7ece0;
-  --hm-1: #c6e6b3;
-  --hm-2: #97d17a;
-  --hm-3: #6bbf59;
-  --hm-4: #4f9c3f;
+  --hm-0: #e7ece0;   /* none */
+  --hm-1: #d3ecc0;   /* palest green */
+  --hm-2: #b6e09b;
+  --hm-3: #97d17a;
+  --hm-4: #7cc65f;
+  --hm-5: #6bbf59;   /* frog green */
+  --hm-6: #55a745;
+  --hm-7: #3f8a33;
+  --hm-8: #2c6b23;   /* deepest green */
   width: 100%;
   margin-top: 1.25rem;
   padding-top: 1.1rem;
@@ -179,6 +183,10 @@ body.crying { animation: wobble .5s ease-in-out; }
 .hm-cell[data-level="2"] { background: var(--hm-2); }
 .hm-cell[data-level="3"] { background: var(--hm-3); }
 .hm-cell[data-level="4"] { background: var(--hm-4); }
+.hm-cell[data-level="5"] { background: var(--hm-5); }
+.hm-cell[data-level="6"] { background: var(--hm-6); }
+.hm-cell[data-level="7"] { background: var(--hm-7); }
+.hm-cell[data-level="8"] { background: var(--hm-8); }
 .hm-cell--empty { background: transparent; }
 .heatmap__caption { margin-top: .7rem; font-size: .72rem; color: var(--muted); text-align: left; }
 
